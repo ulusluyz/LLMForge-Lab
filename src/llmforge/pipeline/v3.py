@@ -2,7 +2,7 @@ import os
 import json
 import hashlib
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 from pydantic import BaseModel, Field
 
 class CorpusRecord(BaseModel):
@@ -20,14 +20,23 @@ class PipelineV3Checkpoint(BaseModel):
     timestamp: float = Field(default_factory=time.time)
 
 class CorpusPipelineV3:
-    """Pipeline V3: Streaming, Normalization, Exact & MinHash Near-Dedup, Split Isolation, Checkpoints & Manifest."""
+    """Pipeline V3: Complete V2 Feature Parity + MinHash Near-Dedup, Durable Checkpoints, and Split Isolation."""
 
     def __init__(self, output_dir: str):
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
-        self.seen_exact_hashes = set()
+        self.seen_exact_hashes: Set[str] = set()
+        self.seen_minhashes: Set[int] = set()
         self.processed_records: List[CorpusRecord] = []
         self.checkpoint_file = os.path.join(output_dir, "checkpoint.json")
+
+    def _compute_minhash(self, text: str) -> int:
+        words = text.lower().split()
+        shingles = [" ".join(words[i:i+2]) for i in range(len(words)-1)] if len(words) > 1 else words
+        if not shingles:
+            return 0
+        hashes = [int(hashlib.md5(s.encode("utf-8")).hexdigest(), 16) for s in shingles]
+        return min(hashes)
 
     def load_checkpoint(self) -> bool:
         if os.path.exists(self.checkpoint_file):
@@ -35,6 +44,7 @@ class CorpusPipelineV3:
                 with open(self.checkpoint_file, "r") as f:
                     data = json.load(f)
                     self.seen_exact_hashes = set(data.get("seen_exact_hashes", []))
+                    self.seen_minhashes = set(data.get("seen_minhashes", []))
                     return True
             except Exception:
                 return False
@@ -44,6 +54,7 @@ class CorpusPipelineV3:
         data = {
             "stage": stage,
             "seen_exact_hashes": list(self.seen_exact_hashes),
+            "seen_minhashes": list(self.seen_minhashes),
             "timestamp": time.time()
         }
         with open(self.checkpoint_file, "w") as f:
@@ -65,7 +76,15 @@ class CorpusPipelineV3:
                 continue
             self.seen_exact_hashes.add(text_hash)
 
-            # 3. Decision check
+            # 3. Near-Deduplication via MinHash
+            minhash_val = self._compute_minhash(normalized_text)
+            if minhash_val != 0 and minhash_val in self.seen_minhashes:
+                rec.status = "REJECT"
+                continue
+            if minhash_val != 0:
+                self.seen_minhashes.add(minhash_val)
+
+            # 4. Decision check
             if rec.status == "ACCEPT":
                 cleaned.append(rec)
             self.processed_records.append(rec)

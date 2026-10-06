@@ -14,11 +14,16 @@ def main():
             prompt = req.get("prompt", "")
             history = req.get("history", [])
 
-            # Dummy model intelligence behavior
+            # Check if history contains Turn 1 context
+            has_turn1_history = any("başkenti" in h.get("user", "") for h in history)
+
             if "Türkiye'nin başkenti" in prompt:
                 resp = "Ankara'dır."
             elif "şehir hangi ülkenin başkentiydi" in prompt or "İlk bölümde" in prompt:
-                resp = "Türkiye'nin başkenti Ankara'dır."
+                if has_turn1_history:
+                    resp = "Türkiye'nin başkenti Ankara'dır."
+                else:
+                    resp = "Hangi şehirden bahsettiğinizi bilmiyorum."
             elif "2 + 2" in prompt:
                 resp = "4"
             else:
