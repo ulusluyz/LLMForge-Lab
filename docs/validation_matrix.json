@@ -1,0 +1,58 @@
+[
+  {
+    "test_name": "Local Subprocess CLI Adapter Execution",
+    "level": "Level C \u2014 Local E2E",
+    "backend": "SubprocessCLIAdapter (tests.fixtures.dummy_model)",
+    "type": "Local Real Process",
+    "status": "PASS",
+    "evidence": "Subprocess launched, stdin/stdout communication verified, responses captured."
+  },
+  {
+    "test_name": "Mock Intelligence API Provider",
+    "level": "Level A \u2014 Unit",
+    "backend": "MockProvider",
+    "type": "Mock",
+    "status": "PASS",
+    "evidence": "Deterministic structured Pydantic response generation verified."
+  },
+  {
+    "test_name": "Real Gemini Intelligence API Provider",
+    "level": "Level D \u2014 Real External Integration",
+    "backend": "GeminiProvider",
+    "type": "Real API",
+    "status": "NOT_RUN",
+    "evidence": "GEMINI_API_KEY environment variable unavailable in CI/sandbox environment."
+  },
+  {
+    "test_name": "Multi-Turn Adaptive Diagnostic Engine & Hidden Graph",
+    "level": "Level B \u2014 Integration",
+    "backend": "AdaptiveDiagnosticEngine",
+    "type": "Local Real Process + Mock",
+    "status": "PASS",
+    "evidence": "8-turn test run executed, hidden dependency graph edges built, diagnostic report generated."
+  },
+  {
+    "test_name": "Corpus Pipeline V3 Deduplication & Checkpoint Resume",
+    "level": "Level B \u2014 Integration",
+    "backend": "CorpusPipelineV3",
+    "type": "Local Real File System",
+    "status": "PASS",
+    "evidence": "SHA-256 exact deduplication verified, durable checkpoint saved, manifest hash exported."
+  },
+  {
+    "test_name": "Audit Subsystem & Hash-Chained Tamper Detection",
+    "level": "Level A \u2014 Unit",
+    "backend": "AuditEngine",
+    "type": "Local Real",
+    "status": "PASS",
+    "evidence": "Preflight and Final audit JSON logs generated with SHA-256 signatures."
+  },
+  {
+    "test_name": "FastAPI Web Dashboard & Human Review UI",
+    "level": "Level B \u2014 Integration",
+    "backend": "FastAPI Server & TestClient",
+    "type": "Local HTTP Endpoint",
+    "status": "PASS",
+    "evidence": "Dashboard HTML rendered, /review UI served, decision submission API verified."
+  }
+]
