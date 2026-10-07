@@ -3,6 +3,7 @@ import json
 import hashlib
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field
+from llmforge.security.redactor import SecretRedactor
 
 class AuditResult(BaseModel):
     audit_name: str
@@ -14,7 +15,7 @@ class AuditResult(BaseModel):
     hash_signature: str = ""
 
 class AuditEngine:
-    """Audit Subsystem executing all 11 audit types with hash-chained tamper protection."""
+    """Audit Subsystem executing all 11 audit types with evidence verification and SecretRedactor scrubbing."""
 
     def __init__(self, run_dir: str):
         self.run_dir = run_dir
@@ -22,6 +23,10 @@ class AuditEngine:
         os.makedirs(self.audits_dir, exist_ok=True)
 
     def _save_and_sign_audit(self, audit_name: str, result: AuditResult) -> AuditResult:
+        # Scrub all evidence and logs using SecretRedactor before signing
+        result.evidence = SecretRedactor.redact_structure(result.evidence)
+        result.summary = SecretRedactor.redact_text(result.summary)
+
         data_str = json.dumps(result.model_dump(exclude={"hash_signature"}), sort_keys=True)
         result.hash_signature = hashlib.sha256(data_str.encode("utf-8")).hexdigest()
 
@@ -32,16 +37,15 @@ class AuditEngine:
 
     def run_preflight_audit(self, env_info: Dict[str, Any]) -> AuditResult:
         status = "PASS"
-        warnings = []
-        errors = []
+        warnings, errors = [], []
 
         if not env_info.get("local_model_accessible", True):
             status = "FAIL"
-            errors.append("Local LLM model process is not accessible.")
+            errors.append("Local LLM process inaccessible.")
 
         if not env_info.get("api_key_present", True):
             status = "PASS_WITH_WARNINGS"
-            warnings.append("API Provider Key missing; falling back to Mock Provider.")
+            warnings.append("API Provider Key missing; fallback to Mock Provider.")
 
         res = AuditResult(
             audit_name="preflight_audit",
@@ -54,99 +58,117 @@ class AuditEngine:
         return self._save_and_sign_audit("preflight_audit", res)
 
     def run_runtime_audit(self, runtime_info: Dict[str, Any]) -> AuditResult:
-        res = AuditResult(
+        status = "PASS"
+        errors = []
+        if "context_length" not in runtime_info:
+            status = "FAIL"
+            errors.append("Missing required runtime context length metadata.")
+
+        return self._save_and_sign_audit("runtime_audit", AuditResult(
             audit_name="runtime_audit",
-            status="PASS",
-            summary="Runtime environment and generation parameter audit complete.",
-            evidence=runtime_info
-        )
-        return self._save_and_sign_audit("runtime_audit", res)
+            status=status,
+            summary="Runtime environment audit complete.",
+            evidence=runtime_info,
+            errors=errors
+        ))
 
     def run_diagnostic_audit(self, diag_info: Dict[str, Any]) -> AuditResult:
-        res = AuditResult(
+        status = "PASS"
+        errors = []
+        if diag_info.get("turns", 0) < 1:
+            status = "FAIL"
+            errors.append("Diagnostic run executed zero turns.")
+
+        return self._save_and_sign_audit("diagnostic_audit", AuditResult(
             audit_name="diagnostic_audit",
-            status="PASS",
-            summary="Multi-turn diagnostic run evidence audit complete.",
-            evidence=diag_info
-        )
-        return self._save_and_sign_audit("diagnostic_audit", res)
+            status=status,
+            summary="Diagnostic run evidence audit complete.",
+            evidence=diag_info,
+            errors=errors
+        ))
 
     def run_source_audit(self, source_info: Dict[str, Any]) -> AuditResult:
-        res = AuditResult(
+        status = "PASS"
+        warnings = []
+        if source_info.get("license_status") == "UNKNOWN":
+            status = "PASS_WITH_WARNINGS"
+            warnings.append("Source license is UNKNOWN; human review recommended.")
+
+        return self._save_and_sign_audit("source_audit", AuditResult(
             audit_name="source_audit",
-            status="PASS",
-            summary="Web research source provenance and license audit complete.",
-            evidence=source_info
-        )
-        return self._save_and_sign_audit("source_audit", res)
+            status=status,
+            summary="Source audit complete.",
+            evidence=source_info,
+            warnings=warnings
+        ))
 
     def run_pipeline_audit(self, pipeline_info: Dict[str, Any]) -> AuditResult:
-        res = AuditResult(
+        status = "PASS"
+        errors = []
+        if pipeline_info.get("accepted_count", 1) == 0:
+            status = "FAIL"
+            errors.append("Pipeline V3 yielded zero accepted records.")
+
+        return self._save_and_sign_audit("pipeline_audit", AuditResult(
             audit_name="pipeline_audit",
-            status="PASS",
-            summary="Pipeline V3 deduplication and checkpoint audit complete.",
-            evidence=pipeline_info
-        )
-        return self._save_and_sign_audit("pipeline_audit", res)
+            status=status,
+            summary="Pipeline audit complete.",
+            evidence=pipeline_info,
+            errors=errors
+        ))
 
     def run_corpus_quality_audit(self, corpus_info: Dict[str, Any]) -> AuditResult:
-        res = AuditResult(
+        return self._save_and_sign_audit("corpus_quality_audit", AuditResult(
             audit_name="corpus_quality_audit",
-            status="PASS",
-            summary="Corpus quality distribution and schema validity audit complete.",
+            status="PASS" if corpus_info else "FAIL",
+            summary="Corpus quality audit complete.",
             evidence=corpus_info
-        )
-        return self._save_and_sign_audit("corpus_quality_audit", res)
+        ))
 
     def run_human_review_audit(self, review_info: Dict[str, Any]) -> AuditResult:
-        res = AuditResult(
+        return self._save_and_sign_audit("human_review_audit", AuditResult(
             audit_name="human_review_audit",
             status="PASS",
-            summary="Human reviewer decisions and undo trail audit complete.",
+            summary="Human review audit complete.",
             evidence=review_info
-        )
-        return self._save_and_sign_audit("human_review_audit", res)
+        ))
 
     def run_reproducibility_audit(self, repro_info: Dict[str, Any]) -> AuditResult:
-        res = AuditResult(
+        return self._save_and_sign_audit("reproducibility_audit", AuditResult(
             audit_name="reproducibility_audit",
-            status="PASS",
-            summary="Seed, commit hash, and configuration fingerprint audit complete.",
+            status="PASS" if "git_commit" in repro_info else "PASS_WITH_WARNINGS",
+            summary="Reproducibility audit complete.",
             evidence=repro_info
-        )
-        return self._save_and_sign_audit("reproducibility_audit", res)
+        ))
 
     def run_security_audit(self, sec_info: Dict[str, Any]) -> AuditResult:
-        res = AuditResult(
+        status = "PASS" if sec_info.get("prompt_injection_safe", True) else "FAIL"
+        return self._save_and_sign_audit("security_audit", AuditResult(
             audit_name="security_audit",
-            status="PASS",
-            summary="Prompt injection, SSRF, and file path traversal security audit complete.",
+            status=status,
+            summary="Security audit complete.",
             evidence=sec_info
-        )
-        return self._save_and_sign_audit("security_audit", res)
+        ))
 
     def run_regression_audit(self, reg_info: Dict[str, Any]) -> AuditResult:
-        res = AuditResult(
+        return self._save_and_sign_audit("regression_audit", AuditResult(
             audit_name="regression_audit",
             status="PASS",
-            summary="Model V1 vs Model V2 performance comparison audit complete.",
+            summary="Regression audit complete.",
             evidence=reg_info
-        )
-        return self._save_and_sign_audit("regression_audit", res)
+        ))
 
     def run_final_audit(self, run_artifacts: Dict[str, Any]) -> AuditResult:
         status = "PASS"
         errors = []
-
         if not run_artifacts.get("diagnostics_complete", True):
             status = "FAIL"
-            errors.append("Diagnostics step did not complete.")
+            errors.append("Diagnostics step incomplete.")
 
-        res = AuditResult(
+        return self._save_and_sign_audit("final_audit", AuditResult(
             audit_name="final_audit",
             status=status,
-            summary="Final end-to-end execution audit complete.",
+            summary="Final audit complete.",
             evidence=run_artifacts,
             errors=errors
-        )
-        return self._save_and_sign_audit("final_audit", res)
+        ))

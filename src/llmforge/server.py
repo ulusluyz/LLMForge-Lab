@@ -4,10 +4,10 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import os
 import json
+from llmforge.security.sanitizer import HTMLSanitizer
 
 app = FastAPI(title="LLMForge Lab Dashboard & Human Review UI")
 
-# In-memory store for Human Review items
 review_items_store: List[Dict[str, Any]] = [
     {
         "id": "rev_001",
@@ -20,7 +20,7 @@ review_items_store: List[Dict[str, Any]] = [
         "category": "Lisans belirsiz",
         "quality_score": 0.72,
         "review_reason": "Lisans 'UNKNOWN' olarak tespit edildi.",
-        "status": "HUMAN_REVIEW", # ACCEPT, REJECT, REVIEW_LATER, HUMAN_REVIEW
+        "status": "HUMAN_REVIEW",
         "decision_notes": ""
     },
     {
@@ -41,7 +41,7 @@ review_items_store: List[Dict[str, Any]] = [
 
 class DecisionPayload(BaseModel):
     item_id: str
-    decision: str # ACCEPT, REJECT, REVIEW_LATER
+    decision: str
     notes: Optional[str] = ""
 
 @app.get("/", response_class=HTMLResponse)
@@ -185,14 +185,22 @@ async def human_review_ui():
 
 @app.get("/api/reviews")
 async def get_reviews():
-    return [item for item in review_items_store if item["status"] in ["HUMAN_REVIEW", "REVIEW_LATER"]]
+    sanitized_items = []
+    for item in review_items_store:
+        if item["status"] in ["HUMAN_REVIEW", "REVIEW_LATER"]:
+            clean_item = dict(item)
+            clean_item["title"] = HTMLSanitizer.escape_untrusted_text(item["title"])
+            clean_item["full_text"] = HTMLSanitizer.escape_untrusted_text(item["full_text"])
+            clean_item["review_reason"] = HTMLSanitizer.escape_untrusted_text(item["review_reason"])
+            sanitized_items.append(clean_item)
+    return sanitized_items
 
 @app.post("/api/reviews/decision")
 async def record_decision(payload: DecisionPayload):
     for item in review_items_store:
         if item["id"] == payload.item_id:
             item["status"] = payload.decision
-            item["decision_notes"] = payload.notes or ""
+            item["decision_notes"] = HTMLSanitizer.escape_untrusted_text(payload.notes or "")
             return {"status": "ok", "item_id": payload.item_id, "new_status": payload.decision}
     raise HTTPException(status_code=404, detail="Review item not found")
 
