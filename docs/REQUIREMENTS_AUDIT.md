@@ -26,7 +26,7 @@
 | 22 | Local Model Adapters (CLI, HTTP, Ollama, llama.cpp, vLLM) | `SubprocessCLIAdapter` / `GenericHTTPAdapter` | `src/llmforge/models/adapters.py` | `tests/test_adapters.py` | Local E2E | `TESTED` | Async subprocess and HTTP local model adapters verified. |
 | 23 | Security Safeguards & Untrusted Data Protection | `SecurityEngine` / `SecretRedactor` | `src/llmforge/security/` | `tests/test_security_adversarial.py` | Unit | `TESTED` | Path traversal, SSRF defense, prompt sanitization, secret scrubbing, and tool allowlists. |
 | 24 | Human Review Intelligence & Active Learning | `ThreeLayerLearningEngine` | `src/llmforge/review/` | `tests/test_learning_engine.py` | Integration | `TESTED` | Three-layer learning engine, passage-level character offset span annotations, active learning escalation, and promotion gates. |
-| 25 | Deep Model Characterization & Profiling | `CapabilityProfileEngine` | `src/llmforge/characterization/` | `tests/test_model_characterization.py` | Integration | `TESTED` | 8 core capability families, expected vs observed envelopes, preservation targets, dynamic test generators, boundary discovery, Tokenizer Lab, and Level 0–7 escalation ladders. |
+| 25 | Deep Model Characterization & Profiling | `AdaptiveCharacterizationSession` | `src/llmforge/characterization/` | `tests/test_characterization_e2e_session.py` | Integration | `TESTED` | 8 core capability families, expected vs observed envelopes, preservation targets, dynamic test generators, boundary discovery, failure reproduction, Tokenizer Lab, and Level 0–7 escalation ladders. |
 
 ---
 
