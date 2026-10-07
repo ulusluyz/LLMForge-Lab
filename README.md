@@ -1,20 +1,24 @@
 # LLMForge Lab
 
-> **Autonomous LLM Diagnostic, Audit & Corpus Engineering Laboratory**
+> **Autonomous LLM Diagnostic, Audit, Corpus Engineering & Human Review Intelligence Laboratory**
 
-LLMForge Lab is an autonomous laboratory system that evaluates local large language models (LLMs) through dynamic and adaptive experiments. It investigates root causes with evidence, distinguishes model/architecture/runtime/tokenizer/context/training/data issues, identifies data requirements, searches for genuine web sources, and prepares audit-checked training corpora using Pipeline V3.
+LLMForge Lab is an autonomous laboratory system that evaluates local large language models (LLMs) through dynamic multi-turn experiments, isolates root causes with evidence, searches web sources, prepares audit-checked training corpora via Pipeline V3, and continually learns from human feedback through a provider-independent Human Review Intelligence System.
 
 ---
 
-## Architecture Blueprint
+## Key Capabilities
 
-**Principle:**
-- **Program = The Maze.** Enforces state machine, CLI/process boundaries, schema, security limits, audits, human review, and pipeline execution.
-- **LLM API = The Intelligence Layer.** Generates dynamic questions, evaluates responses, hypothesizes, creates counter-tests, and formulates root-cause candidates.
-
-```text
-GÖZLEM → KANIT → HİPOTEZ → KARŞI HİPOTEZ → KONTROLLÜ DENEY → KÖK NEDEN → ÇÖZÜM İHTİYACI → VERİ İHTİYACI → KAYNAK ARAŞTIRMASI → CORPUS PIPELINE V3 → AUDIT → HUMAN REVIEW → DOĞRULANMIŞ CORPUS
-```
+1. **Maze vs. Intelligence Principle:** Program controls state machine, process lifecycles, and security limits; Reasoning API acts as the adaptive intelligence layer.
+2. **Multi-Turn Diagnostic Engine & Hidden Test Graph:** Dynamically generates multi-turn Turkish evaluation questions with hidden dependency graphs (`RECALL`, `COUNTER_TEST`) and multi-objective signal extraction.
+3. **System-vs-Model Fault Isolation:** Distinguishes model context weaknesses from LLMForge Lab history forwarding failures.
+4. **Corpus Pipeline V3:** Ingests, normalizes, deduplicates via MinHash signature vectors & Jaccard candidate verification, saves durable build checkpoints (`checkpoint.json`), and enforces 80/10/10 cluster split isolation.
+5. **11 Signed Audit Modules:** Executes Preflight, Runtime, Diagnostic, Source, Pipeline, Corpus Quality, Human Review, Human Feedback Learning, Reproducibility, Security, Regression, and Final Audits signed with SHA-256 hash signatures.
+6. **Human Review Intelligence & Active Learning:**
+   - Provider-independent storage (`HumanFeedbackStore`, `LabelRegistry`).
+   - Passage-level character offset span annotations `[start, end]`.
+   - Three-layer learning architecture (Raw Evidence -> Learned Patterns -> Decision Logic).
+   - Progressive autonomy modes (`MANUAL`, `SHADOW`, `ASSISTED`, `AUTONOMOUS`) with Golden Set promotion gates (`PromotionGate`).
+7. **Production Security Hardening:** Canonical path sandboxing, SSRF loopback/private IP blocking, `SecretRedactor` key scrubbing, prompt injection sanitization, zip bomb limits, API call budget caps, and tool allowlists.
 
 ---
 
@@ -37,7 +41,7 @@ llmforge serve --host 127.0.0.1 --port 8080
 ```
 
 - **Dashboard:** `http://127.0.0.1:8080/`
-- **Human Review UI:** `http://127.0.0.1:8080/review`
+- **Human Review Workspace:** `http://127.0.0.1:8080/review`
 
 ### Running an Autonomous Diagnostic Evaluation
 
@@ -47,52 +51,20 @@ llmforge run --run-id run_001 --max-turns 20
 
 ---
 
-## Subsystems Overview
+## Documentation Index
 
-### 1. Local LLM Adapters
-Supports:
-- Direct CLI Subprocess (`SubprocessCLIAdapter`)
-- Generic OpenAI-compatible Local HTTP (`GenericHTTPAdapter`)
-- Ollama (`OllamaAdapter`)
-- llama.cpp Server (`LlamaCppAdapter`)
-- vLLM (`VLLMAdapter`)
-
-### 2. Multi-Turn Adaptive Diagnostic Engine & Hidden Graph
-Executes 20–50 turn adaptive evaluations using a hidden dependency graph containing edges (`RECALL`, `REFERENCE`, `CONTRADICTION`, `COUNTER_TEST`, `DISTRACTOR`). Extracts multi-objective diagnostic signals per turn.
-
-### 3. Data Requirement & Pipeline V3
-- Generates precise, justified Data Requirement Specifications.
-- Discovers web sources with Source Audits (`ACCEPT`, `HUMAN_REVIEW`, `REJECT`).
-- Executes Pipeline V3 (streaming, normalization, exact SHA-256 dedup, durable checkpoints, immutable manifests).
-
-### 4. Human Review Web UI
-Interactive workspace at `http://127.0.0.1:8080/review` displaying categorizations ("Lisans Belirsiz", "Sentetik İçerik Şüphesi"), batch actions, and reviewer decision history.
-
-### 5. Audit Subsystem
-Includes 11 structured audit modules with SHA-256 hash-chained tamper protection.
-
----
-
-## Documentation & Validation
-
-Detailed documentation available in `docs/`:
+Detailed technical documentation available in `docs/`:
 - `ARCHITECTURE.md`
 - `DIAGNOSTIC_ENGINE.md`
+- `HUMAN_FEEDBACK_LEARNING.md`
+- `HUMAN_REVIEW_TAXONOMY_RESEARCH.md`
 - `AUDIT_SYSTEM.md`
 - `PIPELINE_V3.md`
 - `HUMAN_REVIEW.md`
-
-### Test Validation Matrix Summary
-
-| Test Name | Level | Type | Status |
-|---|---|---|---|
-| Local Subprocess CLI Adapter Execution | Level C — Local E2E | Local Real Process | PASS |
-| Mock Intelligence API Provider | Level A — Unit | Mock | PASS |
-| Real Gemini Intelligence API Provider | Level D — Real External | Real API | NOT_RUN |
-| Multi-Turn Adaptive Diagnostic Engine & Hidden Graph | Level B — Integration | Local Process + Mock | PASS |
-| Corpus Pipeline V3 Deduplication & Checkpoint Resume | Level B — Integration | Local File System | PASS |
-| Audit Subsystem & Hash-Chained Tamper Protection | Level A — Unit | Local Real | PASS |
-| FastAPI Web Dashboard & Human Review UI | Level B — Integration | Local HTTP Endpoint | PASS |
+- `SECURITY_ARCHITECTURE.md`
+- `SECURITY_VALIDATION_REPORT.md`
+- `REQUIREMENTS_AUDIT.md`
+- `FINAL_VALIDATION_REPORT.md`
 
 ---
 

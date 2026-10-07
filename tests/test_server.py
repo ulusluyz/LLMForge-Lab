@@ -12,7 +12,7 @@ def test_main_dashboard():
 def test_human_review_ui():
     response = client.get("/review")
     assert response.status_code == 200
-    assert "Human Review Workspace" in response.text
+    assert "Human Review Intelligence Workspace" in response.text
 
 def test_review_api_workflow():
     # 1. Fetch pending reviews
@@ -24,7 +24,7 @@ def test_review_api_workflow():
     item_id = items[0]["id"]
 
     # 2. Submit decision ACCEPT
-    dec_res = client.post("/api/reviews/decision", json={"item_id": item_id, "decision": "ACCEPT"})
+    dec_res = client.post("/api/reviews/decision", json={"item_id": item_id, "decision": "ACCEPT", "labels": ["ACCEPTED_CONTENT"]})
     assert dec_res.status_code == 200
     assert dec_res.json()["new_status"] == "ACCEPT"
 

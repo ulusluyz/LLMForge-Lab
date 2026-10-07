@@ -11,8 +11,11 @@ class SecurityEngine:
         base_abs = os.path.realpath(base_dir)
         target_abs = os.path.realpath(os.path.join(base_abs, target_path) if not os.path.isabs(target_path) else target_path)
 
-        # Block directory traversal attempts
-        if ".." in target_path.split(os.sep) or ".." in target_path:
+        # Block relative directory traversal attempts escaping base_dir
+        if not os.path.isabs(target_path) and not target_abs.startswith(base_abs):
+            raise ValueError(f"Path traversal blocked: '{target_path}' escapes sandbox '{base_dir}'.")
+
+        if ".." in target_path.split(os.sep):
             raise ValueError(f"Path traversal blocked: '{target_path}' contains parent directory escape.")
 
         return target_abs
