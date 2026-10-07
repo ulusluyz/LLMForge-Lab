@@ -118,14 +118,23 @@ class ThreeLayerLearningEngine:
                 novelty_score=0.05
             )
 
-        # Novelty / Out-of-Distribution Escalation
-        if len(text_lower.split()) > 20 and not matched_pos:
+        # Zero evidence / Novelty Escalation for unindexed documents when zero patterns exist in Layer B
+        if not self.learned_patterns or not matched_pos:
+            if not self.learned_patterns:
+                return DecisionResult(
+                    decision="HUMAN_REVIEW",
+                    confidence=0.50,
+                    assigned_labels=[],
+                    escalation_reason="Unlearned Baseline Escalation: Zero feedback patterns in Layer B knowledge store.",
+                    novelty_score=1.00
+                )
+            # Default auto accept for clean text when layer B contains patterns but none matched
             return DecisionResult(
-                decision="HUMAN_REVIEW",
-                confidence=0.60,
+                decision="AUTO_ACCEPT",
+                confidence=0.90,
                 assigned_labels=[],
-                escalation_reason="Novelty Escalation: Out-of-distribution document structure.",
-                novelty_score=0.85
+                escalation_reason="",
+                novelty_score=0.0
             )
 
         return DecisionResult(
