@@ -9,13 +9,20 @@ from llmforge.review.registry import LabelRegistry
 from llmforge.review.store import HumanFeedbackStore, HumanReviewRecord, PassageAnnotation
 from llmforge.review.learning import ThreeLayerLearningEngine
 from llmforge.diagnostics.intervention_store import InterventionMemoryStore, InterventionRecord
+from llmforge.characterization.profile import CapabilityProfileEngine, CapabilityFamily
 
-app = FastAPI(title="LLMForge Lab Dashboard, Human Review & Model Improvement UI")
+app = FastAPI(title="LLMForge Lab Dashboard, Human Review, Model Improvement & Characterization UI")
 
 registry = LabelRegistry.get_default_registry()
 feedback_store = HumanFeedbackStore("data/feedback_store")
 learning_engine = ThreeLayerLearningEngine(feedback_store, registry)
 intervention_store = InterventionMemoryStore("data/intervention_store")
+
+profile_engine = CapabilityProfileEngine(model_name="Llama-3-7B-Turkish", parameter_count_b=7.0)
+profile_engine.record_capability_evidence("formal_turkish", CapabilityFamily.LANGUAGE_LINGUISTIC, 0.95, 0.85)
+profile_engine.record_capability_evidence("technical_explanation", CapabilityFamily.GENERATION, 0.90, 0.80)
+profile_engine.record_capability_evidence("casual_chat", CapabilityFamily.GENERATION, 0.40, 0.75)
+model_profile = profile_engine.finalize_profile()
 
 review_items_store: List[Dict[str, Any]] = [
     {
@@ -48,7 +55,7 @@ class DecisionPayload(BaseModel):
 
 class InterventionDecisionPayload(BaseModel):
     intervention_id: str
-    decision: str # ACCEPT, REJECT, MODIFY, DEFER
+    decision: str
     notes: Optional[str] = ""
 
 @app.get("/", response_class=HTMLResponse)
@@ -77,6 +84,7 @@ async def main_dashboard():
             <h1>LLMForge Lab</h1>
             <nav>
                 <a href="/">Dashboard</a>
+                <a href="/characterization">Capability Profile</a>
                 <a href="/review">Human Review UI</a>
                 <a href="/interventions">Model Improvement</a>
                 <a href="/api/status">API Status</a>
@@ -85,9 +93,9 @@ async def main_dashboard():
         <div class="container">
             <div class="card">
                 <h2>Autonomous LLM Diagnostic & Corpus Laboratory</h2>
-                <p>Status: <strong>READY</strong> | Active Intelligence Provider: <strong>Mock / Gemini</strong></p>
-                <a href="/review" class="btn">Go to Human Review Workspace</a>
-                <a href="/interventions" class="btn" style="background:#2b6cb0; margin-left: 0.5rem;">View Model Improvement Plan</a>
+                <p>Status: <strong>READY</strong> | Active Model: <strong>Llama-3-7B-Turkish</strong></p>
+                <a href="/characterization" class="btn">View Model Capability Fingerprint</a>
+                <a href="/review" class="btn" style="background:#2b6cb0; margin-left: 0.5rem;">Human Review Workspace</a>
             </div>
 
             <div class="grid">
@@ -100,9 +108,46 @@ async def main_dashboard():
                     <div>Audit Subsystems</div>
                 </div>
                 <div class="card stat-box">
-                    <div class="stat-number">Pipeline V3</div>
-                    <div>Corpus Engine</div>
+                    <div class="stat-number">8</div>
+                    <div>Capability Families</div>
                 </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+@app.get("/characterization", response_class=HTMLResponse)
+async def characterization_ui():
+    html_content = f"""<!DOCTYPE html>
+    <html>
+    <head>
+        <title>LLMForge Lab - Model Capability Fingerprint</title>
+        <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f7fafc; }}
+            header {{ background: #2b6cb0; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }}
+            .container {{ padding: 2rem; max-width: 1100px; margin: 0 auto; }}
+            .card {{ background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+            .badge-strong {{ background: #c6f6d5; color: #22543d; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: bold; }}
+            .badge-weak {{ background: #fed7d7; color: #9b2c2c; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: bold; }}
+            .meta {{ font-size: 0.95rem; color: #4a5568; margin: 0.5rem 0; }}
+        </style>
+    </head>
+    <body>
+        <header>
+            <h2>Model Capability Fingerprint: {model_profile.model_name} ({model_profile.parameter_count_b}B)</h2>
+            <a href="/" style="color:white;">Back to Dashboard</a>
+        </header>
+        <div class="container">
+            <div class="card">
+                <h3>Strongest Capabilities & Preservation Targets</h3>
+                {"".join([f'<div class="meta"><span class="badge-strong">STRENGTH</span> <strong>{s.capability_name}:</strong> Observed {s.observed_score} vs Expected {s.expected_score} (Preservation Target)</div>' for s in model_profile.strongest_capabilities])}
+            </div>
+
+            <div class="card">
+                <h3>Unexpected Weaknesses & Development Candidates</h3>
+                {"".join([f'<div class="meta"><span class="badge-weak">UNEXPECTED WEAKNESS</span> <strong>{w.capability_name}:</strong> Observed {w.observed_score} vs Expected {w.expected_score}</div>' for w in model_profile.unexpected_weaknesses])}
             </div>
         </div>
     </body>
