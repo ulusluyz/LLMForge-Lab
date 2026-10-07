@@ -8,12 +8,14 @@ from llmforge.security.sanitizer import HTMLSanitizer
 from llmforge.review.registry import LabelRegistry
 from llmforge.review.store import HumanFeedbackStore, HumanReviewRecord, PassageAnnotation
 from llmforge.review.learning import ThreeLayerLearningEngine
+from llmforge.diagnostics.intervention_store import InterventionMemoryStore, InterventionRecord
 
-app = FastAPI(title="LLMForge Lab Dashboard & Human Review UI")
+app = FastAPI(title="LLMForge Lab Dashboard, Human Review & Model Improvement UI")
 
 registry = LabelRegistry.get_default_registry()
 feedback_store = HumanFeedbackStore("data/feedback_store")
 learning_engine = ThreeLayerLearningEngine(feedback_store, registry)
+intervention_store = InterventionMemoryStore("data/intervention_store")
 
 review_items_store: List[Dict[str, Any]] = [
     {
@@ -32,23 +34,6 @@ review_items_store: List[Dict[str, Any]] = [
         "decision_notes": "",
         "assigned_labels": ["LICENSE_UNKNOWN"],
         "novelty_score": 0.15
-    },
-    {
-        "id": "rev_002",
-        "title": "Sentetik İçerik Şüphesi - Sentetik Diyaloglar",
-        "text_preview": "As an AI language model, I cannot answer this...",
-        "full_text": "As an AI language model, I cannot fulfill this request directly without further clarification.",
-        "source_url": "https://example.com/datasets/synthetic_qa.jsonl",
-        "provenance": "Synthetic Generator V1",
-        "license_status": "MIT",
-        "category": "Sentetik içerik şüphesi",
-        "quality_score": 0.35,
-        "review_reason": "AI refusal pattern 'As an AI language model' detected.",
-        "escalation_reason": "AI generator refusal phrase detected; synthetic content risk.",
-        "status": "HUMAN_REVIEW",
-        "decision_notes": "",
-        "assigned_labels": ["AI_GENERATED_SUSPECTED", "SYNTHETIC_SPAM"],
-        "novelty_score": 0.40
     }
 ]
 
@@ -59,6 +44,11 @@ class DecisionPayload(BaseModel):
     selected_passage: Optional[str] = None
     start_offset: Optional[int] = None
     end_offset: Optional[int] = None
+    notes: Optional[str] = ""
+
+class InterventionDecisionPayload(BaseModel):
+    intervention_id: str
+    decision: str # ACCEPT, REJECT, MODIFY, DEFER
     notes: Optional[str] = ""
 
 @app.get("/", response_class=HTMLResponse)
@@ -88,6 +78,7 @@ async def main_dashboard():
             <nav>
                 <a href="/">Dashboard</a>
                 <a href="/review">Human Review UI</a>
+                <a href="/interventions">Model Improvement</a>
                 <a href="/api/status">API Status</a>
             </nav>
         </header>
@@ -96,6 +87,7 @@ async def main_dashboard():
                 <h2>Autonomous LLM Diagnostic & Corpus Laboratory</h2>
                 <p>Status: <strong>READY</strong> | Active Intelligence Provider: <strong>Mock / Gemini</strong></p>
                 <a href="/review" class="btn">Go to Human Review Workspace</a>
+                <a href="/interventions" class="btn" style="background:#2b6cb0; margin-left: 0.5rem;">View Model Improvement Plan</a>
             </div>
 
             <div class="grid">
@@ -202,6 +194,49 @@ async def human_review_ui():
     """
     return HTMLResponse(content=html_content)
 
+@app.get("/interventions", response_class=HTMLResponse)
+async def model_interventions_ui():
+    html_content = """<!DOCTYPE html>
+    <html>
+    <head>
+        <title>LLMForge Lab - Model Improvement & Interventions</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f7fafc; }
+            header { background: #2b6cb0; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+            .container { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+            .card { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+            .badge-p0 { background: #fed7d7; color: #9b2c2c; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: bold; }
+            .meta { font-size: 0.9rem; color: #4a5568; margin: 0.5rem 0; }
+            .btn-approve { background: #38a169; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+            .btn-reject { background: #e53e3e; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h2>Model Improvement & Intervention Plan</h2>
+            <a href="/" style="color:white;">Back to Dashboard</a>
+        </header>
+        <div class="container">
+            <div class="card">
+                <span class="badge-p0">Priority: P0</span>
+                <h3 style="display:inline; margin-left:0.5rem;">LLMFORGE_INTEGRATION_FIX</h3>
+                <div class="meta">
+                    <strong>Problem:</strong> History forwarding buffer truncation in LLMForge CLI adapter.<br>
+                    <strong>Primary Root Cause:</strong> LLMFORGE_INTEGRATION<br>
+                    <strong>Data Required?</strong> NO (Technical pipeline fix)<br>
+                    <strong>Justification:</strong> Direct runtime passed recall test while CLI adapter failed. Do not blame or retrain model.
+                </div>
+                <div style="margin-top:1rem;">
+                    <button class="btn-approve" onclick="alert('Recommendation Approved!')">[ APPROVE INTERVENTION ]</button>
+                    <button class="btn-reject" onclick="alert('Recommendation Deferred')">[ DEFER ]</button>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
 @app.get("/api/reviews")
 async def get_reviews():
     sanitized_items = []
@@ -222,7 +257,6 @@ async def record_decision(payload: DecisionPayload):
             item["status"] = payload.decision
             item["decision_notes"] = HTMLSanitizer.escape_untrusted_text(payload.notes or "")
 
-            # Save verified feedback record into persistent store & trigger Layer B learning
             passages = []
             if payload.selected_passage and payload.start_offset is not None and payload.end_offset is not None:
                 passages.append(PassageAnnotation(
@@ -250,6 +284,21 @@ async def record_decision(payload: DecisionPayload):
 
             return {"status": "ok", "item_id": payload.item_id, "new_status": payload.decision}
     raise HTTPException(status_code=404, detail="Review item not found")
+
+@app.post("/api/interventions/decision")
+async def record_intervention_decision(payload: InterventionDecisionPayload):
+    rec = InterventionRecord(
+        intervention_id=payload.intervention_id,
+        run_id="run_001",
+        problem_summary="History forwarding truncation in SubprocessCLIAdapter",
+        primary_root_cause="LLMFORGE_INTEGRATION",
+        recommended_intervention="LLMFORGE_INTEGRATION_FIX",
+        human_decision=payload.decision,
+        human_notes=HTMLSanitizer.escape_untrusted_text(payload.notes or ""),
+        applied_status="APPLIED" if payload.decision == "ACCEPT" else "NOT_APPLIED"
+    )
+    intervention_store.save_record(rec)
+    return {"status": "ok", "intervention_id": payload.intervention_id, "decision": payload.decision}
 
 @app.get("/api/status")
 async def api_status():
