@@ -76,6 +76,14 @@ class LabelRegistry(BaseModel):
                 description="Adversarial text attempting to hijack system prompts or exfiltrate state.",
                 default_action="REJECT",
                 risk_level="CRITICAL"
+            ),
+            LabelDefinition(
+                label_id="NATURAL_TURKISH",
+                name="Natural Turkish / User Language",
+                category="Positive Evidence",
+                description="High value real-world natural Turkish user dialogue, forum discussion, or informal text. Minor typo tolerance applies.",
+                default_action="ACCEPT",
+                risk_level="LOW"
             )
         ]
 

@@ -8,6 +8,9 @@ from llmforge.security.sanitizer import HTMLSanitizer
 from llmforge.review.registry import LabelRegistry
 from llmforge.review.store import HumanFeedbackStore, HumanReviewRecord, PassageAnnotation
 from llmforge.review.learning import ThreeLayerLearningEngine
+from llmforge.review.schemas import QualityReviewSchema
+from llmforge.review.agreement import AIHumanAgreementTracker, AIHumanComparisonRecord
+from llmforge.intelligence.provider import APIProvider, MockProvider, GeminiProvider
 from llmforge.diagnostics.intervention_store import InterventionMemoryStore, InterventionRecord
 from llmforge.characterization.profile import CapabilityProfileEngine, CapabilityFamily
 
@@ -17,6 +20,24 @@ registry = LabelRegistry.get_default_registry()
 feedback_store = HumanFeedbackStore("data/feedback_store")
 learning_engine = ThreeLayerLearningEngine(feedback_store, registry)
 intervention_store = InterventionMemoryStore("data/intervention_store")
+agreement_tracker = AIHumanAgreementTracker("data/ai_human_agreement.jsonl")
+
+def get_active_provider() -> APIProvider:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if api_key:
+        return GeminiProvider({"api_key": api_key})
+    return MockProvider({
+        "responses": {
+            "QualityReviewSchema": {
+                "proposed_decision": "HUMAN_REVIEW",
+                "proposed_labels": ["PII"],
+                "rationale": "Mock Intelligence Review: Document requires human review.",
+                "confidence": 0.85,
+                "uncertainty": 0.15,
+                "optional_cleaning_recommendation": "Remove personal details if present."
+            }
+        }
+    })
 
 profile_engine = CapabilityProfileEngine(model_name="Llama-3-7B-Turkish", parameter_count_b=7.0)
 profile_engine.record_capability_evidence("formal_turkish", CapabilityFamily.LANGUAGE_LINGUISTIC, 0.95, 0.85)
@@ -214,13 +235,24 @@ async def human_review_ui():
                         </div>
                         <div class="text-box">${item.full_text}</div>
                         <div class="actions">
+                            <button class="btn-accept" onclick="runAutoReview('${item.id}')" style="background:#3182ce; color:white;">[ OTOMATİK DENETİMİ GÖSTER ]</button>
                             <button class="btn-accept" onclick="makeDecision('${item.id}', 'ACCEPT')">[ KABUL ET ]</button>
                             <button class="btn-reject" onclick="makeDecision('${item.id}', 'REJECT')">[ REDDET ]</button>
                             <button class="btn-later" onclick="makeDecision('${item.id}', 'REVIEW_LATER')">[ SONRA BAK ]</button>
                         </div>
+                        <div id="ai-rec-${item.id}" style="margin-top:0.5rem; font-size:0.9rem; color:#2b6cb0;"></div>
                     `;
                     container.appendChild(card);
                 });
+            }
+
+            async function runAutoReview(itemId) {
+                const res = await fetch(`/api/reviews/auto-review/${itemId}`, { method: 'POST' });
+                const data = await res.json();
+                const div = document.getElementById(`ai-rec-${itemId}`);
+                if (div) {
+                    div.innerHTML = `<strong>AI Recommendation:</strong> ${data.proposed_decision} | <strong>Labels:</strong> ${data.proposed_labels.join(', ')} <br><strong>Rationale:</strong> ${data.rationale}`;
+                }
             }
 
             async function makeDecision(itemId, decision) {
@@ -282,6 +314,51 @@ async def model_interventions_ui():
     """
     return HTMLResponse(content=html_content)
 
+@app.post("/api/reviews/auto-review/{item_id}")
+async def run_auto_review(item_id: str):
+    target = None
+    for item in review_items_store:
+        if item["id"] == item_id:
+            target = item
+            break
+    if not target:
+        raise HTTPException(status_code=404, detail="Review item not found")
+
+    provider = get_active_provider()
+    valid_labels = list(registry.labels.keys())
+    prompt = f"Analyze document for corpus quality review:\n\nTitle: {target['title']}\nText: {target['full_text']}\n\nAvailable Valid Labels: {valid_labels}"
+
+    try:
+        review_res: QualityReviewSchema = await provider.generate_structured(
+            prompt=prompt,
+            response_schema=QualityReviewSchema,
+            system_instruction="You are an expert corpus quality auditor. Select proposed labels strictly from the provided available labels."
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Intelligence Provider error: {str(e)}")
+
+    # Validate returned labels against LabelRegistry
+    validated_labels = [lbl for lbl in review_res.proposed_labels if lbl in registry.labels]
+
+    target["provider_recommendation"] = review_res.proposed_decision
+    target["system_recommendation"] = review_res.proposed_decision
+    target["assigned_labels"] = validated_labels
+    target["review_reason"] = HTMLSanitizer.escape_untrusted_text(review_res.rationale)
+    target["confidence"] = review_res.confidence
+    target["uncertainty"] = review_res.uncertainty
+    target["optional_cleaning_recommendation"] = HTMLSanitizer.escape_untrusted_text(review_res.optional_cleaning_recommendation or "")
+
+    return {
+        "status": "ok",
+        "item_id": item_id,
+        "proposed_decision": review_res.proposed_decision,
+        "proposed_labels": validated_labels,
+        "rationale": review_res.rationale,
+        "confidence": review_res.confidence,
+        "uncertainty": review_res.uncertainty,
+        "optional_cleaning_recommendation": review_res.optional_cleaning_recommendation
+    }
+
 @app.get("/api/reviews")
 async def get_reviews():
     sanitized_items = []
@@ -311,6 +388,25 @@ async def record_decision(payload: DecisionPayload):
                     selected_text=payload.selected_passage,
                     labels=payload.labels
                 ))
+
+            # Record AI vs Human Agreement if AI recommendation exists
+            ai_rec = item.get("provider_recommendation")
+            if ai_rec:
+                ai_labels = item.get("assigned_labels", [])
+                human_labels = payload.labels or []
+                overlap = len(set(ai_labels).intersection(set(human_labels)))
+                cmp_record = AIHumanComparisonRecord(
+                    item_id=payload.item_id,
+                    provider_name="ActiveIntelligenceProvider",
+                    ai_decision=ai_rec,
+                    human_decision=payload.decision,
+                    ai_labels=ai_labels,
+                    human_labels=human_labels,
+                    decision_matches=(ai_rec == payload.decision or (ai_rec in ["AUTO_ACCEPT", "ACCEPT"] and payload.decision == "ACCEPT") or (ai_rec in ["AUTO_REJECT", "REJECT"] and payload.decision == "REJECT")),
+                    label_overlap_count=overlap,
+                    confidence=item.get("confidence", 0.85)
+                )
+                agreement_tracker.record_comparison(cmp_record)
 
             feedback_record = HumanReviewRecord(
                 review_id=f"rev_{payload.item_id}",

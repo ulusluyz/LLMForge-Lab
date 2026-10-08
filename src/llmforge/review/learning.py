@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel, Field
 from llmforge.review.store import HumanFeedbackStore, HumanReviewRecord
 from llmforge.review.registry import LabelRegistry
+from llmforge.review.diff import SafeCleanupGuard
 
 class LearnedPattern(BaseModel):
     label_id: str
@@ -99,6 +100,36 @@ class ThreeLayerLearningEngine:
 
         assigned_labels = list(matched_pos.keys())
         if assigned_labels:
+            token_count = max(len(text.split()), 1)
+            match_count = sum(len(p.pattern_text.split()) for p in self.learned_patterns if p.pattern_text in text_lower)
+            density_ratio = match_count / token_count
+
+            # Value / Recovery Cost Calculation
+            recoverable_tokens = max(token_count - match_count, 0)
+
+            # Severity / Density Decision Rules
+            if density_ratio < 0.05 and token_count >= 500:
+                # Low density noise in large high-value document -> SAFE_CLEAN + AUTO_ACCEPT
+                return DecisionResult(
+                    decision="AUTO_ACCEPT",
+                    confidence=0.94,
+                    assigned_labels=assigned_labels,
+                    escalation_reason="Low Noise Density: Document auto-cleaned and accepted.",
+                    matching_patterns=list(matched_pos.keys()),
+                    novelty_score=0.02
+                )
+
+            if recoverable_tokens < 30 and density_ratio > 0.50:
+                # High noise, low recoverable tokens -> SKIP (unworthy of cleanup cost)
+                return DecisionResult(
+                    decision="AUTO_SKIP",
+                    confidence=0.92,
+                    assigned_labels=assigned_labels,
+                    escalation_reason="Low Expected Corpus Value vs Recovery Cost: Auto-skipped.",
+                    matching_patterns=list(matched_pos.keys()),
+                    novelty_score=0.05
+                )
+
             highest_risk = max([self.registry.get_label(l).risk_level if self.registry.get_label(l) else "LOW" for l in assigned_labels])
             if highest_risk in ["HIGH", "CRITICAL"]:
                 return DecisionResult(
